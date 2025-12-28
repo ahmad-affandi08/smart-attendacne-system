@@ -12,7 +12,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Smart Absensi Sistem - IoT RFID",
+  title: "TapHadir - Solusi Absensi IoT dengan e-KTP",
   description: "Sistem absensi pintar berbasis IoT dengan RFID dan ESP8266",
 };
 

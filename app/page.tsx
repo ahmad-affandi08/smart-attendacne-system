@@ -33,11 +33,11 @@ export default function Home() {
       <div className="container mx-auto px-6 py-16">
         <div className="text-center">
           <h1 className="text-5xl font-bold text-gray-900 mb-4">
-            Smart Absensi Sistem
+            TapHadir
           </h1>
           <p className="text-xl text-gray-600 mb-8 max-w-2xl mx-auto">
-            Sistem absensi pintar berbasis IoT dengan teknologi RFID dan ESP8266.
-            Setiap mahasiswa menggunakan KTP dengan UID unik untuk absensi otomatis.
+            Solusi Absensi IoT Menggunakan Identitas Kependudukan (e-KTP).
+            Mudah, cepat, dan akurat untuk kebutuhan sekolah modern.
           </p>
           <div className="flex gap-4 justify-center">
             <Link href="/login">

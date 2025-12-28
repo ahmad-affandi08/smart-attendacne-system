@@ -30,6 +30,13 @@ export default function AttendancePage() {
   });
 
   const exportToCSV = () => {
+    // Helper function to escape CSV fields
+    const escapeCSVField = (field: string | number) => {
+      const stringField = String(field);
+      // Escape quotes and wrap in quotes
+      return `"${stringField.replace(/"/g, '""')}"`;
+    };
+
     const headers = ['Tanggal', 'Waktu', 'UID', 'Nama', 'Kelas', 'Status'];
     const rows = filteredLogs.map(log => [
       new Date(log.timestamp).toLocaleDateString('id-ID'),
@@ -40,12 +47,15 @@ export default function AttendancePage() {
       log.status
     ]);
 
+    // Create CSV with semicolon delimiter (better for Excel)
     const csvContent = [
-      headers.join(','),
-      ...rows.map(row => row.join(','))
+      headers.map(escapeCSVField).join(';'),
+      ...rows.map(row => row.map(escapeCSVField).join(';'))
     ].join('\n');
 
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    // Add UTF-8 BOM for Excel compatibility
+    const BOM = '\uFEFF';
+    const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
     link.setAttribute('href', url);
@@ -207,8 +217,8 @@ export default function AttendancePage() {
                             log.status === 'HADIR'
                               ? 'success'
                               : log.status === 'DITOLAK'
-                              ? 'danger'
-                              : 'warning'
+                                ? 'danger'
+                                : 'warning'
                           }
                         >
                           {log.status}

@@ -33,6 +33,11 @@ interface IoTStore {
   setAttendanceLogs: (logs: AttendanceLog[]) => void;
   fetchAttendanceLogs: () => Promise<void>;
 
+  // Serial logs (raw messages from Arduino)
+  serialLogs: Array<{ id: string; message: string; timestamp: Date; type: string }>;
+  addSerialLog: (message: string, type?: string) => void;
+  clearSerialLogs: () => void;
+
   // UI state
   isLoading: boolean;
   setLoading: (loading: boolean) => void;
@@ -126,7 +131,7 @@ export const useIoTStore = create<IoTStore>((set, get) => ({
   // Students
   students: [],
   setStudents: (students) => set({ students }),
-  
+
   addStudent: async (student) => {
     try {
       const response = await fetch('/api/students', {
@@ -223,7 +228,7 @@ export const useIoTStore = create<IoTStore>((set, get) => ({
   // Attendance logs
   // Attendance logs
   attendanceLogs: [],
-  
+
   addAttendanceLog: async (log) => {
     try {
       const response = await fetch('/api/attendance', {
@@ -257,6 +262,24 @@ export const useIoTStore = create<IoTStore>((set, get) => ({
       console.error('Error fetching attendance logs:', error);
     }
   },
+
+  // Serial logs (raw messages from Arduino)
+  serialLogs: [],
+
+  addSerialLog: (message: string, type: string = 'INFO') => {
+    const newLog = {
+      id: `log-${Date.now()}-${Math.random()}`,
+      message,
+      type,
+      timestamp: new Date(),
+    };
+
+    set((state) => ({
+      serialLogs: [newLog, ...state.serialLogs].slice(0, 500), // Keep last 500 logs
+    }));
+  },
+
+  clearSerialLogs: () => set({ serialLogs: [] }),
 
   // UI state
   isLoading: false,

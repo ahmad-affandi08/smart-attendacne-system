@@ -71,6 +71,16 @@ export function parseSerialMessage(message: string): {
       };
     }
     
+    // Handle KTP scan result (untuk registrasi)
+    if (message.startsWith('WEB_SCAN_KTP:')) {
+      const uid = message.substring(13).trim();
+      console.log('[Parser] KTP Scanned:', uid);
+      return {
+        type: 'CARD_SCANNED',
+        data: { uid }
+      };
+    }
+    
     if (message.startsWith('WEB_MASTER_SET:')) {
       return {
         type: 'MASTER_SET',

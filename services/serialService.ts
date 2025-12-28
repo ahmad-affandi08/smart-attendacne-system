@@ -20,7 +20,15 @@ class SerialService {
       this.port = await (navigator as any).serial.requestPort();
       
       // Open connection with ESP8266 baud rate (115200)
-      await this.port.open({ baudRate: 115200 });
+      try {
+        await this.port.open({ baudRate: 115200 });
+      } catch (openError: any) {
+        // Port might be in use by another application
+        if (openError.message?.includes('open')) {
+          throw new Error('Port sedang digunakan. Tutup Arduino IDE, Serial Monitor, atau aplikasi lain yang menggunakan port ini, lalu coba lagi.');
+        }
+        throw openError;
+      }
       
       this.isConnected = true;
       
@@ -41,9 +49,15 @@ class SerialService {
       }, 500);
       
       return true;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Serial connection error:', error);
-      return false;
+      
+      // Provide user-friendly error message
+      if (error.message) {
+        throw error;
+      } else {
+        throw new Error('Gagal membuka port serial. Pastikan device terhubung dan driver terinstall.');
+      }
     }
   }
 
