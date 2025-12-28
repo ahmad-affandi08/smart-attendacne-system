@@ -1,0 +1,84 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model ProgramStudi {
+  id          String    @id @default(cuid())
+  code        String    @unique  // Kode Prodi (e.g., "TI", "SI")
+  name        String              // Nama Prodi (e.g., "Teknik Informatika")
+  faculty     String?             // Fakultas (optional)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  
+  // Relations
+  students    Student[]
+  
+  @@index([code])
+}
+
+model Student {
+  id          String        @id @default(cuid())
+  name        String
+  class       String
+  nis         String        @unique
+  uid         String        @unique  // KTP UID - required dan unique
+  prodiId     String?                // Foreign key ke ProgramStudi
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  
+  // Relations
+  prodi       ProgramStudi? @relation(fields: [prodiId], references: [id], onDelete: SetNull)
+  attendances AttendanceLog[]
+  
+  @@index([nis])
+  @@index([uid])
+  @@index([prodiId])
+}
+
+model AttendanceLog {
+  id          String   @id @default(cuid())
+  uid         String
+  studentId   String?
+  studentName String
+  class       String
+  status      String   // HADIR, TIDAK HADIR, IZIN, DITOLAK
+  source      String   @default("ktp") // ktp, manual
+  timestamp   DateTime @default(now())
+  
+  // Relations
+  student     Student?  @relation(fields: [studentId], references: [id], onDelete: SetNull)
+  
+  @@index([studentId])
+  @@index([timestamp])
+  @@index([status])
+  @@index([uid])
+}
+
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  password  String   // Hashed with bcryptjs
+  role      String   @default("ADMIN") // ADMIN, USER
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@index([email])
+}
+
+model SystemSettings {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  updatedAt DateTime @updatedAt
+  
+  @@index([key])
+}
