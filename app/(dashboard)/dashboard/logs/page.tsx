@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { AlertDialog } from '@/components/ui/alert-dialog';
 import { useIoTStore } from '@/hooks/useIoTStore';
 import { serialService } from '@/services/serialService';
 import { Trash2, Download, Terminal, Clock, AlertCircle, Info, CheckCircle } from 'lucide-react';
@@ -13,6 +14,7 @@ export default function LogsPage() {
   const { serialLogs, addSerialLog, clearSerialLogs, isConnected } = useIoTStore();
   const logsEndRef = useRef<HTMLDivElement>(null);
   const [autoScroll, setAutoScroll] = useState(true);
+  const [showClearDialog, setShowClearDialog] = useState(false);
 
   // Subscribe to serial messages
   useEffect(() => {
@@ -33,9 +35,12 @@ export default function LogsPage() {
   }, [serialLogs, autoScroll]);
 
   const handleClearLogs = () => {
-    if (confirm('Hapus semua logs?')) {
-      clearSerialLogs();
-    }
+    setShowClearDialog(true);
+  };
+
+  const confirmClearLogs = () => {
+    clearSerialLogs();
+    setShowClearDialog(false);
   };
 
   const handleDownloadLogs = () => {
@@ -213,6 +218,18 @@ export default function LogsPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* Clear Logs Confirmation Dialog */}
+      <AlertDialog
+        isOpen={showClearDialog}
+        onClose={() => setShowClearDialog(false)}
+        onConfirm={confirmClearLogs}
+        title="Hapus Semua Logs"
+        description="Apakah Anda yakin ingin menghapus semua logs? Tindakan ini tidak dapat dibatalkan."
+        confirmText="Hapus Semua"
+        cancelText="Batal"
+        variant="warning"
+      />
     </div>
   );
 }

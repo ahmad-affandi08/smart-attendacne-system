@@ -14,11 +14,10 @@ import {
   Activity,
 } from "lucide-react";
 import { useIoTStore } from "@/hooks/useIoTStore";
+import { useSerialConnection } from "@/hooks/useSerialConnection";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { serialService } from "@/services/serialService";
 import { toast } from "sonner";
-import { useState } from "react";
 
 const menuItems = [
   {
@@ -50,84 +49,47 @@ const menuItems = [
 
 export function Sidebar() {
   const pathname = usePathname();
-  const { isConnected, setConnected } = useIoTStore();
-  const [isConnecting, setIsConnecting] = useState(false);
-
-  const handleConnect = async () => {
-    setIsConnecting(true);
-    try {
-      const success = await serialService.connect();
-      if (success) {
-        setConnected(true);
-        toast.success("Berhasil terhubung ke ESP8266!");
-      } else {
-        toast.error("Gagal terhubung. Pastikan port dipilih dengan benar.");
-      }
-    } catch (error: any) {
-      console.error('Connection error:', error);
-      toast.error(error.message || "Gagal terhubung ke perangkat");
-    } finally {
-      setIsConnecting(false);
-    }
-  };
-
-  const handleDisconnect = async () => {
-    try {
-      await serialService.disconnect();
-      setConnected(false);
-      toast.info("Koneksi diputus");
-    } catch (error) {
-      toast.error("Gagal memutuskan koneksi");
-    }
-  };
+  const { isConnected, connectionMode } = useIoTStore();
 
   return (
     <aside className="fixed left-0 top-0 z-40 h-screen w-64 border-r border-gray-200 bg-white">
       <div className="flex h-full flex-col">
         {/* Logo */}
         <div className="flex h-16 items-center justify-between border-b border-gray-200 px-6">
-          <h1 className="text-xl font-bold text-black">TapHadir</h1>
+          <div className="flex items-center gap-3">
+            <img src="/Logo.png" alt="TapHadir Logo" className="h-20 w-20 object-contain" />
+            <h1 className="text-xl font-bold text-black">TapHadir</h1>
+          </div>
         </div>
 
         {/* Connection Status */}
         <div className="border-b border-gray-200 px-6 py-4">
           <div className="space-y-2">
-            <div className="flex items-center justify-center gap-2">
+            <div className="flex flex-col items-center justify-center gap-1">
               {isConnected ? (
                 <>
-                  <Wifi className="h-4 w-4 text-green-600" />
-                  <span className="text-sm font-medium text-green-600">Terhubung</span>
+                  <div className="flex items-center gap-2">
+                    <Wifi className="h-4 w-4 text-green-600" />
+                    <span className="text-sm font-medium text-green-600">Terhubung</span>
+                  </div>
+                  {connectionMode && (
+                    <span className="text-xs text-gray-500">
+                      via {connectionMode === 'serial' ? 'USB Serial' : 'WiFi'}
+                    </span>
+                  )}
                 </>
               ) : (
                 <>
-                  <WifiOff className="h-4 w-4 text-gray-500" />
-                  <span className="text-sm font-medium text-gray-500">Terputus</span>
+                  <div className="flex items-center gap-2">
+                    <WifiOff className="h-4 w-4 text-gray-500" />
+                    <span className="text-sm font-medium text-gray-500">Terputus</span>
+                  </div>
+                  <span className="text-xs text-gray-400">
+                    Hubungkan di Dashboard
+                  </span>
                 </>
               )}
             </div>
-
-            {/* Connect/Disconnect Button */}
-            {isConnected ? (
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={handleDisconnect}
-                className="w-full"
-              >
-                <WifiOff className="mr-2 h-4 w-4" />
-                Putuskan
-              </Button>
-            ) : (
-              <Button
-                size="sm"
-                onClick={handleConnect}
-                disabled={isConnecting}
-                className="w-full bg-black hover:bg-gray-800"
-              >
-                <Wifi className="mr-2 h-4 w-4" />
-                {isConnecting ? "Menghubungkan..." : "Hubungkan"}
-              </Button>
-            )}
           </div>
         </div>
 
@@ -156,7 +118,7 @@ export function Sidebar() {
         </nav>
 
         {/* Footer */}
-        <div className="border-t border-gray-200 p-4">
+        <div className="border-t border-gray-200 p-4 text-center font-semibold">
           <p className="text-xs text-gray-500">© 2025 TapHadir</p>
         </div>
       </div>

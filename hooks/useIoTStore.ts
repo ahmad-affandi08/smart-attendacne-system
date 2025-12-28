@@ -1,10 +1,13 @@
 import { create } from 'zustand';
 import type { SystemStatus, AttendanceLog, Student, ProgramStudi } from '@/types';
+import { toast } from 'sonner';
 
 interface IoTStore {
   // Connection state
   isConnected: boolean;
+  connectionMode: 'serial' | 'wifi' | null;
   setConnected: (status: boolean) => void;
+  setConnectionMode: (mode: 'serial' | 'wifi' | null) => void;
 
   // System status
   systemStatus: SystemStatus | null;
@@ -32,6 +35,8 @@ interface IoTStore {
   addAttendanceLog: (log: Omit<AttendanceLog, 'id' | 'timestamp'>) => Promise<void>;
   setAttendanceLogs: (logs: AttendanceLog[]) => void;
   fetchAttendanceLogs: () => Promise<void>;
+  deleteAttendanceLog: (id: string) => Promise<void>;
+  deleteAllAttendanceLogs: () => Promise<void>;
 
   // Serial logs (raw messages from Arduino)
   serialLogs: Array<{ id: string; message: string; timestamp: Date; type: string }>;
@@ -46,7 +51,9 @@ interface IoTStore {
 export const useIoTStore = create<IoTStore>((set, get) => ({
   // Connection state
   isConnected: false,
+  connectionMode: null,
   setConnected: (status) => set({ isConnected: status }),
+  setConnectionMode: (mode) => set({ connectionMode: mode }),
 
   // System status
   systemStatus: null,
@@ -237,6 +244,15 @@ export const useIoTStore = create<IoTStore>((set, get) => ({
         body: JSON.stringify(log),
       });
 
+      // Handle 409 Conflict (sudah absen hari ini)
+      if (response.status === 409) {
+        const errorData = await response.json();
+        console.warn('Already attended today:', errorData);
+        // Toast sudah ditampilkan di useSerialConnection berdasarkan status Arduino
+        // Jangan tampilkan toast di sini untuk menghindari duplikasi
+        return;
+      }
+
       if (!response.ok) throw new Error('Failed to add attendance log');
 
       const newLog = await response.json();
@@ -260,6 +276,38 @@ export const useIoTStore = create<IoTStore>((set, get) => ({
       set({ attendanceLogs: logs });
     } catch (error) {
       console.error('Error fetching attendance logs:', error);
+    }
+  },
+
+  deleteAttendanceLog: async (id: string) => {
+    try {
+      const response = await fetch(`/api/attendance/${id}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) throw new Error('Failed to delete attendance log');
+
+      set((state) => ({
+        attendanceLogs: state.attendanceLogs.filter((log) => log.id !== id),
+      }));
+    } catch (error) {
+      console.error('Error deleting attendance log:', error);
+      throw error;
+    }
+  },
+
+  deleteAllAttendanceLogs: async () => {
+    try {
+      const response = await fetch('/api/attendance/delete-all', {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) throw new Error('Failed to delete all attendance logs');
+
+      set({ attendanceLogs: [] });
+    } catch (error) {
+      console.error('Error deleting all attendance logs:', error);
+      throw error;
     }
   },
 

@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { AlertDialog } from "@/components/ui/alert-dialog";
 import { useIoTStore } from "@/hooks/useIoTStore";
 import { useSerialConnection } from "@/hooks/useSerialConnection";
 import { Plus, Scan, Search, Trash2, IdCard, GraduationCap, Hash, BookOpen, ChevronDown, Check } from "lucide-react";
@@ -12,13 +13,18 @@ import { toast } from "sonner";
 
 export default function StudentsPage() {
   const { students, addStudent, removeStudent, checkUid, prodi } = useIoTStore();
-  const { serialService, isConnected } = useSerialConnection();
+  const serialConnection = useSerialConnection();
   const [searchQuery, setSearchQuery] = useState("");
   const [showAddModal, setShowAddModal] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
   const [scannedUID, setScannedUID] = useState("");
   const [showProdiDropdown, setShowProdiDropdown] = useState(false);
   const [prodiSearchQuery, setProdiSearchQuery] = useState("");
+  const [deleteDialog, setDeleteDialog] = useState<{ isOpen: boolean; id: string | null; name: string | null }>({
+    isOpen: false,
+    id: null,
+    name: null,
+  });
   const [formData, setFormData] = useState({
     uid: "",
     name: "",
@@ -39,13 +45,20 @@ export default function StudentsPage() {
   // Listen untuk scan KTP
   useEffect(() => {
     if (!isScanning) return;
-    const unsubscribe = serialService.subscribe(async (message) => {
-      if (message.type === 'CARD_SCANNED' && message.data.uid) {
+
+    console.log('👂 Students page: Listening for scan result...');
+
+    const handleScanResult = async (message: any) => {
+      console.log('📨 Students page received:', message);
+
+      // Listen for CARD_SCANNED type with UID (from Arduino scan)
+      if (message.type === 'CARD_SCANNED' && message.data?.uid) {
         const uid = message.data.uid;
+        console.log('✅ Found UID from CARD_SCANNED:', uid);
         setScannedUID(uid);
         setFormData(prev => ({ ...prev, uid }));
         setIsScanning(false);
-        
+
         // Check if UID already registered
         const existing = await checkUid(uid);
         if (existing) {
@@ -54,10 +67,31 @@ export default function StudentsPage() {
           toast.success("KTP berhasil di-scan! Silakan lengkapi data.");
         }
       }
-    });
+      // Fallback for INFO type with UID
+      else if (message.type === 'INFO' && message.data?.uid) {
+        const uid = message.data.uid;
+        console.log('✅ Found UID from INFO:', uid);
+        setScannedUID(uid);
+        setFormData(prev => ({ ...prev, uid }));
+        setIsScanning(false);
 
-    return () => unsubscribe();
-  }, [isScanning, serialService, checkUid]);
+        const existing = await checkUid(uid);
+        if (!existing) {
+          toast.success("KTP berhasil di-scan! Silakan lengkapi data.");
+        }
+      }
+    };
+
+    // Subscribe to both Serial and WiFi
+    const unsubscribeSerial = serialConnection.serialService.subscribe(handleScanResult);
+    const unsubscribeWifi = serialConnection.websocketService.onMessage(handleScanResult);
+
+    return () => {
+      console.log('🔌 Students page: Cleaning up listeners');
+      unsubscribeSerial();
+      unsubscribeWifi();
+    };
+  }, [isScanning, serialConnection, checkUid]);
 
   const filteredStudents = students.filter(
     (student) =>
@@ -67,17 +101,17 @@ export default function StudentsPage() {
   );
 
   const handleScanKTP = async () => {
-    if (!isConnected) {
+    if (!serialConnection.isConnected) {
       toast.error("Perangkat belum terhubung!");
       return;
     }
 
     setIsScanning(true);
     toast.info("Tempelkan KTP pada reader...");
-    
-    // Request scan dari Arduino
-    await serialService.requestScan();
-    
+
+    // Request scan dari Arduino - works for both Serial and WiFi
+    serialConnection.sendCommand('SCAN');
+
     // Auto stop scanning after 30 seconds
     setTimeout(() => {
       if (isScanning) {
@@ -119,18 +153,13 @@ export default function StudentsPage() {
         createdAt: new Date(),
       });
 
-      // Send to Arduino (optional, for sync)
-      if (isConnected) {
-        await serialService.addStudent(
-          formData.name,
-          formData.class,
-          formData.nis,
-          formData.uid
-        );
+      // Send to Arduino (optional, for sync) - works for both Serial and WiFi
+      if (serialConnection.isConnected) {
+        serialConnection.sendCommand(`ADD_Mahasiswa,${formData.name},${formData.class},${formData.nis},${formData.uid}`);
       }
 
       toast.success(`${formData.name} berhasil ditambahkan!`);
-      
+
       // Reset form
       setFormData({ uid: "", name: "", class: "", nis: "", prodiId: "" });
       setScannedUID("");
@@ -142,14 +171,19 @@ export default function StudentsPage() {
     }
   };
 
-  const handleDelete = async (id: string, name: string) => {
-    if (confirm(`Hapus Mahasiswa ${name}?`)) {
-      try {
-        await removeStudent(id);
-        toast.success(`${name} berhasil dihapus`);
-      } catch (error) {
-        toast.error("Gagal menghapus Mahasiswa");
-      }
+  const handleDelete = (id: string, name: string) => {
+    setDeleteDialog({ isOpen: true, id, name });
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteDialog.id) return;
+
+    try {
+      await removeStudent(deleteDialog.id);
+      toast.success(`${deleteDialog.name} berhasil dihapus`);
+      setDeleteDialog({ isOpen: false, id: null, name: null });
+    } catch (error) {
+      toast.error("Gagal menghapus Mahasiswa");
     }
   };
 
@@ -280,12 +314,13 @@ export default function StudentsPage() {
                     {student.uid ? (
                       <Badge variant="success">KTP Terdaftar</Badge>
                     ) : (
-                      <Badge variant="destructive">Belum Scan KTP</Badge>
+                      <Badge variant="danger">Belum Scan KTP</Badge>
                     )}
                     <Button
                       variant="destructive"
                       size="sm"
                       onClick={() => handleDelete(student.id, student.name)}
+                      className="bg-red-500 hover:bg-red-600"
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
@@ -331,15 +366,15 @@ export default function StudentsPage() {
                           {isScanning ? "Menunggu KTP..." : "Scan KTP Mahasiswa"}
                         </p>
                         <p className="text-sm text-gray-500 mt-1">
-                          {isScanning 
-                            ? "Tempelkan KTP pada reader RFID" 
+                          {isScanning
+                            ? "Tempelkan KTP pada reader RFID"
                             : "Klik tombol di bawah untuk memulai scan"}
                         </p>
                       </div>
                       <Button
                         type="button"
                         onClick={handleScanKTP}
-                        disabled={!isConnected || isScanning}
+                        disabled={!serialConnection.isConnected || isScanning}
                         className="mt-2"
                       >
                         {isScanning ? (
@@ -461,8 +496,8 @@ export default function StudentsPage() {
 
                             {filteredProdi.length === 0 ? (
                               <div className="px-3 py-6 text-center text-sm text-gray-500">
-                                {prodi.length === 0 
-                                  ? "Belum ada program studi. Tambahkan di halaman Program Studi." 
+                                {prodi.length === 0
+                                  ? "Belum ada program studi. Tambahkan di halaman Program Studi."
                                   : "Tidak ada hasil"}
                               </div>
                             ) : (
@@ -525,6 +560,18 @@ export default function StudentsPage() {
           </Card>
         </div>
       )}
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog
+        isOpen={deleteDialog.isOpen}
+        onClose={() => setDeleteDialog({ isOpen: false, id: null, name: null })}
+        onConfirm={confirmDelete}
+        title="Hapus Mahasiswa"
+        description={`Apakah Anda yakin ingin menghapus mahasiswa ${deleteDialog.name}? Tindakan ini tidak dapat dibatalkan.`}
+        confirmText="Hapus"
+        cancelText="Batal"
+        variant="danger"
+      />
     </div>
   );
 }

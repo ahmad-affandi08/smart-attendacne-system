@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { AlertDialog } from "@/components/ui/alert-dialog";
 import { useIoTStore } from "@/hooks/useIoTStore";
 import { Plus, Edit, Trash2, BookOpen, Building2, Hash } from "lucide-react";
 import { toast } from "sonner";
@@ -13,6 +14,11 @@ export default function ProgramStudiPage() {
   const { prodi, addProdi, updateProdi, removeProdi } = useIoTStore();
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingProdi, setEditingProdi] = useState<string | null>(null);
+  const [deleteDialog, setDeleteDialog] = useState<{ isOpen: boolean; id: string | null; name: string | null }>({
+    isOpen: false,
+    id: null,
+    name: null,
+  });
   const [formData, setFormData] = useState({
     code: "",
     name: "",
@@ -33,7 +39,7 @@ export default function ProgramStudiPage() {
         await addProdi(formData);
         toast.success("Program Studi berhasil ditambahkan!");
       }
-      
+
       setFormData({ code: "", name: "", faculty: "" });
       setShowAddModal(false);
     } catch (error) {
@@ -54,14 +60,19 @@ export default function ProgramStudiPage() {
     }
   };
 
-  const handleDelete = async (id: string, name: string) => {
-    if (confirm(`Hapus Program Studi ${name}?`)) {
-      try {
-        await removeProdi(id);
-        toast.success(`${name} berhasil dihapus`);
-      } catch (error: any) {
-        toast.error(error.message || "Gagal menghapus Program Studi");
-      }
+  const handleDelete = (id: string, name: string) => {
+    setDeleteDialog({ isOpen: true, id, name });
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteDialog.id) return;
+
+    try {
+      await removeProdi(deleteDialog.id);
+      toast.success(`${deleteDialog.name} berhasil dihapus`);
+      setDeleteDialog({ isOpen: false, id: null, name: null });
+    } catch (error: any) {
+      toast.error(error.message || "Gagal menghapus Program Studi");
     }
   };
 
@@ -172,8 +183,8 @@ export default function ProgramStudiPage() {
                 {editingProdi ? "Edit Program Studi" : "Tambah Program Studi"}
               </CardTitle>
               <CardDescription>
-                {editingProdi 
-                  ? "Update informasi Program Studi" 
+                {editingProdi
+                  ? "Update informasi Program Studi"
                   : "Tambahkan Program Studi baru"}
               </CardDescription>
             </CardHeader>
@@ -253,6 +264,18 @@ export default function ProgramStudiPage() {
           <p>• Program Studi tidak dapat dihapus jika masih ada Mahasiswa</p>
         </CardContent>
       </Card>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog
+        isOpen={deleteDialog.isOpen}
+        onClose={() => setDeleteDialog({ isOpen: false, id: null, name: null })}
+        onConfirm={confirmDelete}
+        title="Hapus Program Studi"
+        description={`Apakah Anda yakin ingin menghapus Program Studi ${deleteDialog.name}? Tindakan ini tidak dapat dibatalkan.`}
+        confirmText="Hapus"
+        cancelText="Batal"
+        variant="danger"
+      />
     </div>
   );
 }

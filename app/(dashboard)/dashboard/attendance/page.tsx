@@ -5,14 +5,25 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { AlertDialog } from "@/components/ui/alert-dialog";
 import { useIoTStore } from "@/hooks/useIoTStore";
 import { formatDate, formatTime } from "@/lib/utils";
-import { ClipboardList, Download, Search, Calendar, CheckCircle, XCircle } from "lucide-react";
+import { ClipboardList, Download, Search, Calendar, CheckCircle, XCircle, Trash2, AlertTriangle } from "lucide-react";
+import { toast } from "sonner";
 
 export default function AttendancePage() {
-  const { attendanceLogs } = useIoTStore();
+  const { attendanceLogs, deleteAttendanceLog, deleteAllAttendanceLogs } = useIoTStore();
   const [searchQuery, setSearchQuery] = useState("");
-  const [dateFilter, setDateFilter] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  // Alert Dialog states
+  const [deleteDialog, setDeleteDialog] = useState<{ isOpen: boolean; id: string | null }>({
+    isOpen: false,
+    id: null,
+  });
+  const [deleteAllDialog, setDeleteAllDialog] = useState(false);
 
   const filteredLogs = attendanceLogs.filter((log) => {
     const matchesSearch =
@@ -20,20 +31,25 @@ export default function AttendancePage() {
       log.class.toLowerCase().includes(searchQuery.toLowerCase()) ||
       log.uid.toLowerCase().includes(searchQuery.toLowerCase());
 
-    let matchesDate = true;
-    if (dateFilter) {
+    let matchesDateRange = true;
+    if (startDate || endDate) {
       const logDate = new Date(log.timestamp).toISOString().split('T')[0];
-      matchesDate = logDate === dateFilter;
+
+      if (startDate && endDate) {
+        matchesDateRange = logDate >= startDate && logDate <= endDate;
+      } else if (startDate) {
+        matchesDateRange = logDate >= startDate;
+      } else if (endDate) {
+        matchesDateRange = logDate <= endDate;
+      }
     }
 
-    return matchesSearch && matchesDate;
+    return matchesSearch && matchesDateRange;
   });
 
   const exportToCSV = () => {
-    // Helper function to escape CSV fields
     const escapeCSVField = (field: string | number) => {
       const stringField = String(field);
-      // Escape quotes and wrap in quotes
       return `"${stringField.replace(/"/g, '""')}"`;
     };
 
@@ -47,13 +63,11 @@ export default function AttendancePage() {
       log.status
     ]);
 
-    // Create CSV with semicolon delimiter (better for Excel)
     const csvContent = [
       headers.map(escapeCSVField).join(';'),
       ...rows.map(row => row.map(escapeCSVField).join(';'))
     ].join('\n');
 
-    // Add UTF-8 BOM for Excel compatibility
     const BOM = '\uFEFF';
     const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
@@ -64,6 +78,42 @@ export default function AttendancePage() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+  };
+
+  const handleDelete = async (id: string) => {
+    setDeleteDialog({ isOpen: true, id });
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteDialog.id) return;
+
+    try {
+      setIsDeleting(true);
+      await deleteAttendanceLog(deleteDialog.id);
+      toast.success('Riwayat absensi berhasil dihapus');
+      setDeleteDialog({ isOpen: false, id: null });
+    } catch (error) {
+      toast.error('Gagal menghapus riwayat absensi');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleDeleteAll = async () => {
+    setDeleteAllDialog(true);
+  };
+
+  const confirmDeleteAll = async () => {
+    try {
+      setIsDeleting(true);
+      await deleteAllAttendanceLogs();
+      toast.success('Semua riwayat absensi berhasil dihapus');
+      setDeleteAllDialog(false);
+    } catch (error) {
+      toast.error('Gagal menghapus semua riwayat absensi');
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   const stats = {
@@ -81,10 +131,21 @@ export default function AttendancePage() {
             Lihat dan kelola data absensi Mahasiswa
           </p>
         </div>
-        <Button onClick={exportToCSV} disabled={filteredLogs.length === 0}>
-          <Download className="mr-2 h-4 w-4" />
-          Export CSV
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            onClick={handleDeleteAll}
+            disabled={attendanceLogs.length === 0 || isDeleting}
+            variant="outline"
+            className="bg-red-500 text-white hover:bg-red-600"
+          >
+            <Trash2 className="mr-2 h-4 w-4" />
+            Hapus Semua
+          </Button>
+          <Button onClick={exportToCSV} disabled={filteredLogs.length === 0}>
+            <Download className="mr-2 h-4 w-4" />
+            Export CSV
+          </Button>
+        </div>
       </div>
 
       {/* Stats */}
@@ -129,7 +190,7 @@ export default function AttendancePage() {
       {/* Filters */}
       <Card>
         <CardContent className="pt-6">
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-4 md:grid-cols-3">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
               <Input
@@ -144,11 +205,45 @@ export default function AttendancePage() {
               <Input
                 type="date"
                 className="pl-10"
-                value={dateFilter}
-                onChange={(e) => setDateFilter(e.target.value)}
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                placeholder="Tanggal Mulai"
+              />
+            </div>
+            <div className="relative">
+              <Calendar className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
+              <Input
+                type="date"
+                className="pl-10"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                placeholder="Tanggal Akhir"
               />
             </div>
           </div>
+          {(startDate || endDate) && (
+            <div className="mt-3 flex items-center gap-2">
+              <Badge variant="outline" className="text-xs">
+                {startDate && endDate
+                  ? `${new Date(startDate).toLocaleDateString('id-ID')} - ${new Date(endDate).toLocaleDateString('id-ID')}`
+                  : startDate
+                    ? `Dari ${new Date(startDate).toLocaleDateString('id-ID')}`
+                    : `Sampai ${new Date(endDate).toLocaleDateString('id-ID')}`
+                }
+              </Badge>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setStartDate("");
+                  setEndDate("");
+                }}
+                className="h-6 text-xs"
+              >
+                Reset
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -187,6 +282,9 @@ export default function AttendancePage() {
                     <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">
                       Status
                     </th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">
+                      Aksi
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
@@ -224,6 +322,17 @@ export default function AttendancePage() {
                           {log.status}
                         </Badge>
                       </td>
+                      <td className="px-4 py-3">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDelete(log.id)}
+                          disabled={isDeleting}
+                          className="bg-red-500 text-white rounded-lg hover:text-white hover:bg-red-700"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -232,6 +341,32 @@ export default function AttendancePage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Delete Single Alert Dialog */}
+      <AlertDialog
+        isOpen={deleteDialog.isOpen}
+        onClose={() => setDeleteDialog({ isOpen: false, id: null })}
+        onConfirm={confirmDelete}
+        title="Hapus Riwayat Absensi"
+        description="Apakah Anda yakin ingin menghapus riwayat absensi ini? Tindakan ini tidak dapat dibatalkan."
+        confirmText="Hapus"
+        cancelText="Batal"
+        variant="danger"
+        isLoading={isDeleting}
+      />
+
+      {/* Delete All Alert Dialog */}
+      <AlertDialog
+        isOpen={deleteAllDialog}
+        onClose={() => setDeleteAllDialog(false)}
+        onConfirm={confirmDeleteAll}
+        title="Hapus Semua Riwayat"
+        description="Apakah Anda yakin ingin menghapus SEMUA riwayat absensi? Tindakan ini akan menghapus seluruh data dan tidak dapat dibatalkan!"
+        confirmText="Hapus Semua"
+        cancelText="Batal"
+        variant="danger"
+        isLoading={isDeleting}
+      />
     </div>
   );
 }

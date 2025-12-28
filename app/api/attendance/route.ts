@@ -60,6 +60,36 @@ export async function POST(request: Request) {
       );
     }
 
+    // VALIDASI: Cek apakah sudah absen hari ini (jika status HADIR)
+    if (status === 'HADIR' && studentId) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+
+      const existingAttendance = await prisma.attendanceLog.findFirst({
+        where: {
+          studentId: studentId,
+          status: 'HADIR',
+          timestamp: {
+            gte: today,
+            lt: tomorrow,
+          },
+        },
+      });
+
+      if (existingAttendance) {
+        return NextResponse.json(
+          { 
+            error: 'Sudah absen hari ini',
+            message: 'Mahasiswa telah melakukan absensi pada hari ini',
+            lastAttendance: existingAttendance 
+          },
+          { status: 409 } // Conflict
+        );
+      }
+    }
+
     // Create attendance record
     const attendance = await prisma.attendanceLog.create({
       data: {
