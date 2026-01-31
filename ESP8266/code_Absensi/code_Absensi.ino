@@ -9,8 +9,8 @@
 #include <WiFiClientSecure.h>
 
 /* ================= WIFI CONFIG ================= */
-const char* ssid = "Tomoro Smooking Room";        // Nama WiFi Anda
-const char* password = "maospatisragen"; // Ganti dengan password WiFi Anda
+const char* ssid = "wifi.id"; 
+const char* password = "43214321"; 
 
 /* ================= TELEGRAM CONFIG ================= */
 const char* botToken = "8585194663:AAF7WBF3hwXo-q9zx9tpYrwnhiwBSpNToks";
