@@ -37,20 +37,14 @@ export function parseSerialMessage(message: string): {
   try {
     console.log('[Parser] Raw message:', message);
     
-    // Handle attendance data from Arduino
-    if (message.startsWith('WEB,')) {
-      const parts = message.substring(4).split(',');
-      if (parts.length >= 4) {
-        return {
-          type: 'ATTENDANCE',
-          data: {
-            uid: parts[0],
-            name: parts[1],
-            class: parts[2],
-            status: parts[3]
-          }
-        };
-      }
+    // Handle RFID scan from ESP8266 (Reader Only Mode)
+    if (message.startsWith('RFID_SCAN:')) {
+      const uid = message.substring(10).trim();
+      console.log('[Parser] RFID Scanned (Reader Mode):', uid);
+      return {
+        type: 'RFID_SCAN',
+        data: { uid }
+      };
     }
     
     // Handle success response (should NOT be parsed as attendance)
@@ -68,16 +62,6 @@ export function parseSerialMessage(message: string): {
       return {
         type: 'ERROR',
         data: { message: message.substring(10).trim() }
-      };
-    }
-    
-    // Handle KTP scan result (untuk registrasi)
-    if (message.startsWith('WEB_SCAN_KTP:')) {
-      const uid = message.substring(13).trim();
-      console.log('[Parser] KTP Scanned:', uid);
-      return {
-        type: 'CARD_SCANNED',
-        data: { uid }
       };
     }
     

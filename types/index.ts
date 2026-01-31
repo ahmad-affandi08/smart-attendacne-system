@@ -16,7 +16,7 @@ export interface Student {
   name: string;
   class: string;
   nis: string;
-  uid: string; // KTP UID - required
+  uid: string; // KTM UID - required
   prodiId?: string | null;
   prodi?: ProgramStudi;
   lastAttendance?: Date;
@@ -32,7 +32,7 @@ export interface AttendanceLog {
   class: string;
   status: 'HADIR' | 'TIDAK HADIR' | 'IZIN' | 'DITOLAK' | 'UNKNOWN';
   timestamp: Date;
-  source?: 'ktp' | 'manual'; // Track if via KTP or manual
+  source?: 'KTM' | 'manual'; // Track if via KTM or manual
 }
 
 export interface SystemStatus {
@@ -48,9 +48,9 @@ export interface SerialCommand {
 }
 
 export interface WebSocketMessage {
-  type: 'STATUS' | 'ATTENDANCE' | 'STUDENT_ADDED' | 'STUDENT_LIST' | 'ACTIVE_STUDENT_SET' | 'MASTER_SET' | 'ERROR' | 'INFO';
+  type: 'STATUS' | 'RFID_SCAN' | 'ERROR' | 'INFO';
   data: any;
-  timestamp: string;
+  timestamp?: string;
 }
 
 export interface DashboardStats {

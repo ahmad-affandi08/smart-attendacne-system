@@ -12,13 +12,13 @@ export default function Home() {
     },
     {
       icon: CreditCard,
-      title: "KTP Mahasiswa",
-      description: "Setiap mahasiswa memiliki KTP dengan UID unik untuk identifikasi otomatis",
+      title: "KTM Mahasiswa",
+      description: "Setiap mahasiswa memiliki KTM dengan UID unik untuk identifikasi otomatis",
     },
     {
       icon: Users,
       title: "Manajemen Mahasiswa",
-      description: "Kelola data mahasiswa, program studi, dan scan KTP untuk registrasi",
+      description: "Kelola data mahasiswa, program studi, dan scan KTM untuk registrasi",
     },
     {
       icon: Clock,
@@ -36,7 +36,7 @@ export default function Home() {
             TapHadir
           </h1>
           <p className="text-xl text-gray-600 mb-8 max-w-2xl mx-auto">
-            Solusi Absensi IoT Menggunakan Identitas Kependudukan (e-KTP).
+            Solusi Absensi IoT Menggunakan Kartu Tanda Mahasiswa (KTM).
             Mudah, cepat, dan akurat untuk kebutuhan sekolah modern.
           </p>
           <div className="flex gap-4 justify-center">
@@ -79,8 +79,8 @@ export default function Home() {
             {[
               "Hubungkan ESP8266 dengan komputer via USB",
               "Tambahkan program studi untuk organisasi data",
-              "Daftarkan mahasiswa dengan scan KTP untuk mendapatkan UID unik",
-              "Mahasiswa tap KTP pada reader untuk absensi otomatis",
+              "Daftarkan mahasiswa dengan scan KTM untuk mendapatkan UID unik",
+              "Mahasiswa tap KTM pada reader untuk absensi otomatis",
               "Data absensi tersimpan real-time dan dapat diekspor",
             ].map((step, index) => (
               <div key={index} className="flex items-start gap-4">

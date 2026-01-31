@@ -29,7 +29,7 @@ model Student {
   name        String
   class       String
   nis         String        @unique
-  uid         String        @unique  // KTP UID - required dan unique
+  uid         String        @unique  // KTM UID - required dan unique
   prodiId     String?                // Foreign key ke ProgramStudi
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
@@ -50,7 +50,7 @@ model AttendanceLog {
   studentName String
   class       String
   status      String   // HADIR, TIDAK HADIR, IZIN, DITOLAK
-  source      String   @default("ktp") // ktp, manual
+  source      String   @default("KTM") // KTM, manual
   timestamp   DateTime @default(now())
   
   // Relations

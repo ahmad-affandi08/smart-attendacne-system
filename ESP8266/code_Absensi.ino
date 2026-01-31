@@ -2,7 +2,6 @@
 #include <LiquidCrystal_I2C.h>
 #include <SPI.h>
 #include <MFRC522.h>
-#include <EEPROM.h>
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
 #include <WebSocketsServer.h>
@@ -28,88 +27,37 @@ WebSocketsServer webSocket = WebSocketsServer(81);
 MFRC522 mfrc522(SS_PIN, RST_PIN);
 LiquidCrystal_I2C lcd(0x27, 16, 2);
 
-/* ============== DATA Mahasiswa ============== */
-struct DataMahasiswa {
-  String nama;
-  String kelas;
-  String nis;
-  String uid;
-  unsigned long lastAttendance;
-  unsigned long lastAttendanceDay;
-};
-
-DataMahasiswa daftarMahasiswa[50];
-int totalMahasiswa = 0;
-
 /* ============ MODE SCAN ============ */
 String lastScannedUID = "";
-
-/* ============ SESSION ID (INCREMENT SETIAP RESTART) ============ */
-unsigned long currentSessionID = 0;
-
-unsigned long getCurrentDay() {
-  // Gunakan sessionID, bukan millis() yang reset setiap restart
-  return currentSessionID;
-}
-
-/* ============ LOG ABSENSI ============ */
-struct LogAbsensi {
-  String uid;
-  String nama;
-  String kelas;
-  String status;
-  String waktu;
-};
-LogAbsensi logAbsensi[100];
-int totalLog = 0;
-
-/* ============ MODE SISTEM ============ */
-enum ModeSistem {
-  MODE_NORMAL,
-  MODE_REGISTER
-};
-ModeSistem modeSaatIni = MODE_NORMAL;
 
 /* ============ DEBOUNCING ============ */
 unsigned long lastReadTime = 0;
 const unsigned long READ_DELAY = 2000;
-
-/* ============ EEPROM ============ */
-#define EEPROM_SIZE 1024
-#define EEPROM_DATA_ADDR 100
 
 // Forward declarations
 void setupWiFi();
 void sendTelegramMessage(String message);
 void updateLCD();
 void beep(int count);
-void loadDataFromEEPROM();
 void prosesKartuRFID();
 void handleSerialCommand();
 void handleCommand(String cmd);
 String bacaUID();
-void prosesModeNormal(String uidNormalized);
-void prosesModeRegister(String uidNormalized);
-void kirimKeWeb(String uid, String nama, String kelas, String status);
-void saveDataToEEPROM();
+void kirimUIDKeWeb(String uid);
 void beepSuccess();
 void beepError();
-void clearEEPROM();
 void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length);
 void handleRoot();
 void handleStatus();
 void tampilkanMenuHelp();
 void tampilkanStatus();
-void tampilkanDaftarMahasiswa();
-void tampilkanLogAbsensi();
-void tambahMahasiswaDariWeb(String cmd);
-void resetData();
 
 /* ======================================= */
 void setup() {
   Serial.begin(115200);
-  Serial.setTimeout(50); // Timeout 50ms untuk Serial operations
-  Serial.println("\n\n=== SISTEM ABSENSI KTP INDIVIDUAL ===");
+  Serial.setTimeout(50);
+  Serial.println("\n\n=== RFID READER SYSTEM ===");
+  Serial.println("Mode: Reader Only (Semua data di Web/Database)");
   
   pinMode(BUZZER_PIN, OUTPUT);
   
@@ -119,7 +67,7 @@ void setup() {
   
   lcd.clear();
   lcd.setCursor(0,0);
-  lcd.print("ABSENSI KTP");
+  lcd.print("RFID READER");
   lcd.setCursor(0,1);
   lcd.print("STARTING...");
   delay(1000);
@@ -133,11 +81,10 @@ void setup() {
   Serial.print("RFID Version: 0x");
   Serial.println(version, HEX);
   
-  loadDataFromEEPROM();
-  
   updateLCD();
   Serial.println("Sistem siap!");
-  Serial.println("Format ke Web: WEB,UID,NAMA,KELAS,STATUS");
+  Serial.println("ESP8266 berfungsi sebagai RFID Reader");
+  Serial.println("Semua data & logika ada di Web/Database");
   Serial.println("Ketik 'HELP' untuk menu serial");
   
   beep(1);
@@ -175,23 +122,22 @@ void prosesKartuRFID() {
   String uid = bacaUID();
   lastScannedUID = uid;
   
-  // Debug print (optional)
-  if (Serial) {
-    Serial.print("[RFID] UID: ");
-    Serial.println(uid);
-  }
+  Serial.print("[RFID] UID Terdeteksi: ");
+  Serial.println(uid);
   
-  String uidNormalized = uid;
-  uidNormalized.replace(" ", "");
+  // Kirim UID ke Web untuk diproses
+  kirimUIDKeWeb(uid);
   
-  switch (modeSaatIni) {
-    case MODE_NORMAL:
-      prosesModeNormal(uidNormalized);
-      break;
-    case MODE_REGISTER:
-      prosesModeRegister(uidNormalized);
-      break;
-  }
+  // Tampilkan di LCD
+  lcd.clear();
+  lcd.setCursor(0,0);
+  lcd.print("KARTU TERDETEKSI");
+  lcd.setCursor(0,1);
+  lcd.print(uid.substring(0, 16));
+  
+  beep(1);
+  delay(1500);
+  updateLCD();
   
   mfrc522.PICC_HaltA();
 }
@@ -208,126 +154,22 @@ String bacaUID() {
   return uid;
 }
 
-/* ============= MODE NORMAL (ABSENSI) ============== */
-void prosesModeNormal(String uidNormalized) {
-  int foundIndex = -1;
-  for (int i = 0; i < totalMahasiswa; i++) {
-    String mahasiswaUID = daftarMahasiswa[i].uid;
-    mahasiswaUID.replace(" ", "");
-    
-    if (mahasiswaUID == uidNormalized) {
-      foundIndex = i;
-      break;
-    }
-  }
+/* ============= KIRIM UID KE WEB ============== */
+void kirimUIDKeWeb(String uid) {
+  // Format: RFID_SCAN:UID
+  String message = "RFID_SCAN:" + uid;
   
-  if (foundIndex >= 0) {
-    DataMahasiswa mahasiswa = daftarMahasiswa[foundIndex];
-    unsigned long hariIni = getCurrentDay();
-    
-    if (daftarMahasiswa[foundIndex].lastAttendanceDay == hariIni) {
-      lcd.clear();
-      lcd.setCursor(0,0);
-      lcd.print("SUDAH ABSEN!");
-      lcd.setCursor(0,1);
-      lcd.print(mahasiswa.nama.substring(0, 16));
-      
-      kirimKeWeb(lastScannedUID, mahasiswa.nama, mahasiswa.kelas, "SUDAH_ABSEN");
-      
-      beepError();
-      delay(2000);
-      updateLCD();
-      return;
-    }
-    
-    lcd.clear();
-    lcd.setCursor(0,0);
-    lcd.print("HADIR:");
-    lcd.setCursor(0,1);
-    lcd.print(mahasiswa.nama.substring(0, 16));
-    
-    kirimKeWeb(lastScannedUID, mahasiswa.nama, mahasiswa.kelas, "HADIR");
-    
-    daftarMahasiswa[foundIndex].lastAttendance = millis();
-    daftarMahasiswa[foundIndex].lastAttendanceDay = hariIni;
-    saveDataToEEPROM();
-    
-    beepSuccess();
-    delay(2000);
-    updateLCD();
-    
-  } else {
-    lcd.clear();
-    lcd.setCursor(0,0);
-    lcd.print("KTP TIDAK");
-    lcd.setCursor(0,1);
-    lcd.print("TERDAFTAR!");
-    
-    kirimKeWeb(lastScannedUID, "UNKNOWN", "UNKNOWN", "DITOLAK");
-    
-    beepError();
-    delay(2000);
-    updateLCD();
-  }
-}
-
-/* ============= MODE REGISTER Mahasiswa ============== */
-void prosesModeRegister(String uidNormalized) {
-  String message = "WEB_SCAN_KTP:" + lastScannedUID;
-  
-  // Kirim ke WebSocket DULU (prioritas)
+  // Kirim ke WebSocket (prioritas)
   webSocket.broadcastTXT(message);
   
-  // Notifikasi Telegram: KTP di-scan
-  String telegramMsg = "KTP TERDETEKSI!\n\n";
-  telegramMsg += "UID: " + lastScannedUID + "\n";
-  telegramMsg += "Mode: REGISTER";
+  // Print ke Serial
+  Serial.println(message);
+  
+  // Notifikasi Telegram
+  String telegramMsg = "KARTU TERDETEKSI!\n\n";
+  telegramMsg += "UID: " + uid + "\n";
+  telegramMsg += "Waktu: " + String(millis()/1000) + "s";
   sendTelegramMessage(telegramMsg);
-  
-  // Baru print ke Serial (optional)
-  if (Serial) Serial.println(message);
-  
-  lcd.clear();
-  lcd.setCursor(0,0);
-  lcd.print("KTP TERDETEKSI");
-  lcd.setCursor(0,1);
-  lcd.print(lastScannedUID.substring(0, 16));
-  
-  beep(2);
-  delay(1500);
-  
-  modeSaatIni = MODE_NORMAL;
-  updateLCD();
-}
-
-/* ============= KIRIM DATA KE WEB ============== */
-void kirimKeWeb(String uid, String nama, String kelas, String status) {
-  String message = "WEB," + uid + "," + nama + "," + kelas + "," + status;
-  
-  // Kirim ke WebSocket DULU (prioritas)
-  webSocket.broadcastTXT(message);
-  
-  // Baru print ke Serial (optional)
-  if (Serial) Serial.println(message);
-  
-  if (totalLog < 100) {
-    logAbsensi[totalLog].uid = uid;
-    logAbsensi[totalLog].nama = nama;
-    logAbsensi[totalLog].kelas = kelas;
-    logAbsensi[totalLog].status = status;
-    
-    unsigned long seconds = millis() / 1000;
-    unsigned long minutes = seconds / 60;
-    unsigned long hours = minutes / 60;
-    hours = hours % 24;
-    minutes = minutes % 60;
-    seconds = seconds % 60;
-    
-    String waktu = String(hours) + ":" + (minutes < 10 ? "0" : "") + String(minutes) + ":" + (seconds < 10 ? "0" : "") + String(seconds);
-    logAbsensi[totalLog].waktu = waktu;
-    
-    totalLog++;
-  }
 }
 
 /* ============= HANDLE SERIAL COMMAND ============== */
@@ -356,35 +198,35 @@ void handleCommand(String cmd) {
   else if (cmdUpper == "STATUS") {
     tampilkanStatus();
   }
-  else if (cmdUpper == "MODE_NORMAL") {
-    modeSaatIni = MODE_NORMAL;
-    String response = "WEB_OK: Mode Normal";
-    Serial.println(response);
-    webSocket.broadcastTXT(response);
-    updateLCD();
+  else if (cmd.startsWith("LCD:")) {
+    // Web bisa mengontrol LCD
+    // Format: LCD:Baris1|Baris2
+    int separator = cmd.indexOf('|');
+    if (separator > 0) {
+      String line1 = cmd.substring(4, separator);
+      String line2 = cmd.substring(separator + 1);
+      
+      lcd.clear();
+      lcd.setCursor(0, 0);
+      lcd.print(line1.substring(0, 16));
+      lcd.setCursor(0, 1);
+      lcd.print(line2.substring(0, 16));
+      
+      Serial.println("WEB_OK: LCD updated");
+      webSocket.broadcastTXT("WEB_OK: LCD updated");
+    }
   }
-  else if (cmdUpper == "MODE_REGISTER" || cmdUpper == "SCAN") {
-    modeSaatIni = MODE_REGISTER;
-    lcd.clear();
-    lcd.setCursor(0,0);
-    lcd.print("SCAN KTP");
-    lcd.setCursor(0,1);
-    lcd.print("MAHASISWA BARU");
-    String response = "WEB_OK: Mode scan KTP registrasi";
-    Serial.println(response);
-    webSocket.broadcastTXT(response);
+  else if (cmdUpper == "BEEP_SUCCESS") {
+    beepSuccess();
+    Serial.println("WEB_OK: Beep success");
   }
-  else if (cmdUpper == "LIST_Mahasiswa") {
-    tampilkanDaftarMahasiswa();
+  else if (cmdUpper == "BEEP_ERROR") {
+    beepError();
+    Serial.println("WEB_OK: Beep error");
   }
-  else if (cmd.startsWith("ADD_Mahasiswa,")) {
-    tambahMahasiswaDariWeb(cmd);
-  }
-  else if (cmdUpper == "GET_LOG") {
-    tampilkanLogAbsensi();
-  }
-  else if (cmdUpper == "RESET") {
-    resetData();
+  else if (cmdUpper == "BEEP") {
+    beep(1);
+    Serial.println("WEB_OK: Beep");
   }
   else if (cmd.length() > 0) {
     String error = "WEB_ERROR: Command tidak dikenal: " + cmd;
@@ -393,113 +235,17 @@ void handleCommand(String cmd) {
   }
 }
 
-/* ============= TAMBAH Mahasiswa DARI WEB ============== */
-void tambahMahasiswaDariWeb(String cmd) {
-  int firstComma = cmd.indexOf(',');
-  int secondComma = cmd.indexOf(',', firstComma + 1);
-  int thirdComma = cmd.indexOf(',', secondComma + 1);
-  int fourthComma = cmd.indexOf(',', thirdComma + 1);
-  
-  if (firstComma != -1 && secondComma != -1 && thirdComma != -1 && fourthComma != -1) {
-    String nama = cmd.substring(firstComma + 1, secondComma);
-    String kelas = cmd.substring(secondComma + 1, thirdComma);
-    String nis = cmd.substring(thirdComma + 1, fourthComma);
-    String uid = cmd.substring(fourthComma + 1);
-    
-    uid.trim();
-    uid.toUpperCase();
-    
-    if (totalMahasiswa < 50) {
-      daftarMahasiswa[totalMahasiswa].nama = nama;
-      daftarMahasiswa[totalMahasiswa].kelas = kelas;
-      daftarMahasiswa[totalMahasiswa].nis = nis;
-      daftarMahasiswa[totalMahasiswa].uid = uid;
-      daftarMahasiswa[totalMahasiswa].lastAttendance = 0;
-      daftarMahasiswa[totalMahasiswa].lastAttendanceDay = 0; // Session ID 0 = belum pernah absen
-      
-      totalMahasiswa++;
-      saveDataToEEPROM();
-      
-      String response = "WEB_OK: Mahasiswa ditambahkan - " + nama + " (Total: " + String(totalMahasiswa) + ")";
-      Serial.println(response);
-      webSocket.broadcastTXT(response);
-      
-      lcd.clear();
-      lcd.setCursor(0,0);
-      lcd.print("DITAMBAH:");
-      lcd.setCursor(0,1);
-      lcd.print(nama.substring(0, 16));
-      
-      beepSuccess();
-      delay(1500);
-      updateLCD();
-      
-    } else {
-      Serial.println("WEB_ERROR: Kapasitas Mahasiswa penuh!");
-    }
-  } else {
-    Serial.println("WEB_ERROR: Format: ADD_Mahasiswa,nama,kelas,nis,uid");
-  }
-}
-
 /* ============= TAMPILKAN STATUS ============== */
 void tampilkanStatus() {
   Serial.println("\n=== STATUS SISTEM ===");
-  Serial.print("Mode: ");
-  switch (modeSaatIni) {
-    case MODE_NORMAL: Serial.println("NORMAL"); break;
-    case MODE_REGISTER: Serial.println("REGISTER (SCAN KTP)"); break;
-  }
-  
-  Serial.print("Total Mahasiswa: ");
-  Serial.println(totalMahasiswa);
-  
-  Serial.print("Total Log Absensi: ");
-  Serial.println(totalLog);
+  Serial.println("Mode: RFID Reader Only");
+  Serial.println("Fungsi: Membaca UID dan kirim ke Web");
+  Serial.println("Data: Semua tersimpan di Web/Database");
+  Serial.print("Last Scanned UID: ");
+  Serial.println(lastScannedUID.length() > 0 ? lastScannedUID : "Belum ada");
+  Serial.print("WiFi: ");
+  Serial.println(WiFi.status() == WL_CONNECTED ? WiFi.localIP().toString() : "Tidak terhubung");
   Serial.println("=====================\n");
-}
-
-/* ============= TAMPILKAN DAFTAR Mahasiswa ============== */
-void tampilkanDaftarMahasiswa() {
-  Serial.println("\n=== DAFTAR Mahasiswa ===");
-  if (totalMahasiswa == 0) {
-    Serial.println("Belum ada Mahasiswa terdaftar");
-  } else {
-    for (int i = 0; i < totalMahasiswa; i++) {
-      Serial.print(i + 1);
-      Serial.print(". ");
-      Serial.print(daftarMahasiswa[i].nama);
-      Serial.print(" | ");
-      Serial.print(daftarMahasiswa[i].kelas);
-      Serial.print(" | ");
-      Serial.print(daftarMahasiswa[i].nis);
-      Serial.print(" | UID: ");
-      Serial.println(daftarMahasiswa[i].uid);
-    }
-  }
-  Serial.println("=====================\n");
-}
-
-/* ============= TAMPILKAN LOG ABSENSI ============== */
-void tampilkanLogAbsensi() {
-  Serial.println("\n=== LOG ABSENSI ===");
-  if (totalLog == 0) {
-    Serial.println("Belum ada absensi");
-  } else {
-    int startIdx = (totalLog > 10) ? totalLog - 10 : 0;
-    for (int i = startIdx; i < totalLog; i++) {
-      Serial.print(i + 1);
-      Serial.print(". ");
-      Serial.print(logAbsensi[i].waktu);
-      Serial.print(" | ");
-      Serial.print(logAbsensi[i].nama);
-      Serial.print(" | ");
-      Serial.print(logAbsensi[i].kelas);
-      Serial.print(" | ");
-      Serial.println(logAbsensi[i].status);
-    }
-  }
-  Serial.println("===================\n");
 }
 
 /* ============= TAMPILKAN MENU HELP ============== */
@@ -507,61 +253,27 @@ void tampilkanMenuHelp() {
   Serial.println("\n=== MENU PERINTAH ===");
   Serial.println("HELP                - Tampilkan menu ini");
   Serial.println("STATUS              - Status sistem");
-  Serial.println("MODE_NORMAL         - Mode absensi normal");
-  Serial.println("MODE_REGISTER       - Mode scan KTP registrasi");
-  Serial.println("LIST_Mahasiswa      - Daftar semua Mahasiswa");
-  Serial.println("GET_LOG             - Tampilkan log absensi");
-  Serial.println("SCAN                - Mode scan KTP");
-  Serial.println("RESET               - Hapus SEMUA data (EEPROM + RAM)");
+  Serial.println("BEEP                - Test buzzer");
+  Serial.println("BEEP_SUCCESS        - Beep sukses");
+  Serial.println("BEEP_ERROR          - Beep error");
+  Serial.println("LCD:Text1|Text2     - Update LCD display");
   Serial.println("");
-  Serial.println("Format tambah Mahasiswa:");
-  Serial.println("  ADD_Mahasiswa,nama,kelas,nis,uid");
-  Serial.println("");
+  Serial.println("Sistem ini hanya READER, semua data di Web/Database");
+  Serial.println("Format output: RFID_SCAN:UID");
   Serial.println("=====================\n");
-}
-
-/* ============= RESET DATA ============== */
-void resetData() {
-  totalMahasiswa = 0;
-  totalLog = 0;
-  
-  clearEEPROM();
-  
-  Serial.println("WEB_OK: Semua data direset");
-  
-  lcd.clear();
-  lcd.setCursor(0,0);
-  lcd.print("DATA DIHAPUS");
-  lcd.setCursor(0,1);
-  lcd.print("SISTEM RESET");
-  
-  beep(3);
-  delay(2000);
-  updateLCD();
 }
 
 /* ============= UPDATE LCD ============== */
 void updateLCD() {
   lcd.clear();
-  
-  if (modeSaatIni == MODE_REGISTER) {
-    lcd.setCursor(0,0);
-    lcd.print("SCAN KTP");
-    lcd.setCursor(0,1);
-    lcd.print("MAHASISWA BARU");
-    return;
-  }
-  
   lcd.setCursor(0,0);
-  lcd.print("ABSENSI KTP");
-  
+  lcd.print("RFID READER");
   lcd.setCursor(0,1);
-  if (totalMahasiswa > 0) {
-    lcd.print("MHS: ");
-    lcd.print(totalMahasiswa);
-    lcd.print(" TERDAFTAR");
+  
+  if (WiFi.status() == WL_CONNECTED) {
+    lcd.print("READY - SCAN");
   } else {
-    lcd.print("BELUM ADA MHS");
+    lcd.print("WiFi OFFLINE");
   }
 }
 
@@ -589,119 +301,6 @@ void beepError() {
     delay(60);
   }
   noTone(BUZZER_PIN);
-}
-
-/* ============= EEPROM FUNCTIONS ============== */
-void loadDataFromEEPROM() {
-  EEPROM.begin(EEPROM_SIZE);
-  
-  // Load dan increment session ID (alamat 0-3)
-  currentSessionID = 0;
-  currentSessionID |= ((unsigned long)EEPROM.read(0)) << 24;
-  currentSessionID |= ((unsigned long)EEPROM.read(1)) << 16;
-  currentSessionID |= ((unsigned long)EEPROM.read(2)) << 8;
-  currentSessionID |= ((unsigned long)EEPROM.read(3));
-  
-  // Increment untuk session baru (setiap restart bertambah)
-  currentSessionID++;
-  
-  // Simpan session ID yang baru
-  EEPROM.write(0, (currentSessionID >> 24) & 0xFF);
-  EEPROM.write(1, (currentSessionID >> 16) & 0xFF);
-  EEPROM.write(2, (currentSessionID >> 8) & 0xFF);
-  EEPROM.write(3, currentSessionID & 0xFF);
-  EEPROM.commit();
-  
-  if (Serial) {
-    Serial.print("[SESSION] Current Session ID: ");
-    Serial.println(currentSessionID);
-  }
-  
-  int addr = EEPROM_DATA_ADDR;
-  totalMahasiswa = EEPROM.read(addr++);
-  if (totalMahasiswa > 50) totalMahasiswa = 0;
-  
-  for (int i = 0; i < totalMahasiswa; i++) {
-    byte namaLen = EEPROM.read(addr++);
-    daftarMahasiswa[i].nama = "";
-    for (int j = 0; j < namaLen; j++) {
-      daftarMahasiswa[i].nama += char(EEPROM.read(addr++));
-    }
-    
-    byte kelasLen = EEPROM.read(addr++);
-    daftarMahasiswa[i].kelas = "";
-    for (int j = 0; j < kelasLen; j++) {
-      daftarMahasiswa[i].kelas += char(EEPROM.read(addr++));
-    }
-    
-    byte nisLen = EEPROM.read(addr++);
-    daftarMahasiswa[i].nis = "";
-    for (int j = 0; j < nisLen; j++) {
-      daftarMahasiswa[i].nis += char(EEPROM.read(addr++));
-    }
-    
-    byte uidLen = EEPROM.read(addr++);
-    daftarMahasiswa[i].uid = "";
-    for (int j = 0; j < uidLen; j++) {
-      daftarMahasiswa[i].uid += char(EEPROM.read(addr++));
-    }
-    
-    daftarMahasiswa[i].lastAttendanceDay = 0;
-    daftarMahasiswa[i].lastAttendanceDay |= ((unsigned long)EEPROM.read(addr++)) << 24;
-    daftarMahasiswa[i].lastAttendanceDay |= ((unsigned long)EEPROM.read(addr++)) << 16;
-    daftarMahasiswa[i].lastAttendanceDay |= ((unsigned long)EEPROM.read(addr++)) << 8;
-    daftarMahasiswa[i].lastAttendanceDay |= ((unsigned long)EEPROM.read(addr++));
-    
-    daftarMahasiswa[i].lastAttendance = 0;
-  }
-  
-  EEPROM.end();
-}
-
-void saveDataToEEPROM() {
-  EEPROM.begin(EEPROM_SIZE);
-  
-  int addr = EEPROM_DATA_ADDR;
-  EEPROM.write(addr++, totalMahasiswa);
-  
-  for (int i = 0; i < totalMahasiswa; i++) {
-    EEPROM.write(addr++, daftarMahasiswa[i].nama.length());
-    for (int j = 0; j < daftarMahasiswa[i].nama.length(); j++) {
-      EEPROM.write(addr++, daftarMahasiswa[i].nama[j]);
-    }
-    
-    EEPROM.write(addr++, daftarMahasiswa[i].kelas.length());
-    for (int j = 0; j < daftarMahasiswa[i].kelas.length(); j++) {
-      EEPROM.write(addr++, daftarMahasiswa[i].kelas[j]);
-    }
-    
-    EEPROM.write(addr++, daftarMahasiswa[i].nis.length());
-    for (int j = 0; j < daftarMahasiswa[i].nis.length(); j++) {
-      EEPROM.write(addr++, daftarMahasiswa[i].nis[j]);
-    }
-    
-    EEPROM.write(addr++, daftarMahasiswa[i].uid.length());
-    for (int j = 0; j < daftarMahasiswa[i].uid.length(); j++) {
-      EEPROM.write(addr++, daftarMahasiswa[i].uid[j]);
-    }
-    
-    EEPROM.write(addr++, (daftarMahasiswa[i].lastAttendanceDay >> 24) & 0xFF);
-    EEPROM.write(addr++, (daftarMahasiswa[i].lastAttendanceDay >> 16) & 0xFF);
-    EEPROM.write(addr++, (daftarMahasiswa[i].lastAttendanceDay >> 8) & 0xFF);
-    EEPROM.write(addr++, daftarMahasiswa[i].lastAttendanceDay & 0xFF);
-  }
-  
-  EEPROM.commit();
-  EEPROM.end();
-}
-
-void clearEEPROM() {
-  EEPROM.begin(EEPROM_SIZE);
-  for (int i = 0; i < EEPROM_SIZE; i++) {
-    EEPROM.write(i, 0);
-  }
-  EEPROM.commit();
-  EEPROM.end();
 }
 
 /* ============= WIFI SETUP ============== */
@@ -737,12 +336,13 @@ void setupWiFi() {
     delay(3000);
     
     // Kirim IP address ke Telegram
-    String telegramMsg = "Sistem Absensi KTP\n\n";
+    String telegramMsg = "RFID Reader System\n\n";
     telegramMsg += "WiFi Terhubung!\n";
+    telegramMsg += "Mode: Reader Only\n";
     telegramMsg += "IP Address: " + WiFi.localIP().toString() + "\n";
     telegramMsg += "WebSocket: ws://" + WiFi.localIP().toString() + ":81\n";
     telegramMsg += "HTTP: http://" + WiFi.localIP().toString() + "\n\n";
-    telegramMsg += "Total Mahasiswa: " + String(totalMahasiswa);
+    telegramMsg += "Semua data tersimpan di Web/Database";
     sendTelegramMessage(telegramMsg);
     
     webSocket.begin();
@@ -831,12 +431,12 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length
     case WStype_CONNECTED: {
       IPAddress ip = webSocket.remoteIP(num);
       if (Serial) Serial.printf("[%u] Connected from %d.%d.%d.%d\n", num, ip[0], ip[1], ip[2], ip[3]);
-      webSocket.sendTXT(num, "WEB_OK: Connected to ESP8266");
+      webSocket.sendTXT(num, "WEB_OK: Connected to RFID Reader");
       
       // Notifikasi Telegram: Web terhubung
       String telegramMsg = "WEB TERHUBUNG!\n\n";
       telegramMsg += "Client IP: " + ip.toString() + "\n";
-      telegramMsg += "Total Mahasiswa: " + String(totalMahasiswa);
+      telegramMsg += "Mode: Reader Only";
       sendTelegramMessage(telegramMsg);
       break;
     }
@@ -859,18 +459,20 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length
 
 /* ============= HTTP HANDLERS ============== */
 void handleRoot() {
-  String html = "<!DOCTYPE html><html><head><title>ESP8266 Absensi</title>";
+  String html = "<!DOCTYPE html><html><head><title>RFID Reader</title>";
   html += "<style>body{font-family:Arial;margin:20px;background:#f0f0f0;}";
   html += ".card{background:white;padding:20px;border-radius:10px;margin:10px 0;box-shadow:0 2px 5px rgba(0,0,0,0.1);}";
   html += "h1{color:#333;}p{color:#666;}</style></head><body>";
-  html += "<div class='card'><h1>🎓 Sistem Absensi KTP</h1>";
-  html += "<p>ESP8266 RFID Attendance System</p></div>";
+  html += "<div class='card'><h1>📡 RFID Reader System</h1>";
+  html += "<p>ESP8266 RFID Reader - Data tersimpan di Web/Database</p></div>";
   html += "<div class='card'><h2>Status</h2>";
-  html += "<p>Total Mahasiswa: <b>" + String(totalMahasiswa) + "</b></p>";
+  html += "<p>Mode: <b>Reader Only</b></p>";
   html += "<p>WiFi: <b>Connected</b></p>";
   html += "<p>IP Address: <b>" + WiFi.localIP().toString() + "</b></p>";
-  html += "<p>WebSocket: ws://" + WiFi.localIP().toString() + ":81</p></div>";
-  html += "<div class='card'><p>Gunakan WebSocket client untuk komunikasi real-time</p></div>";
+  html += "<p>WebSocket: ws://" + WiFi.localIP().toString() + ":81</p>";
+  html += "<p>Last Scanned: <b>" + (lastScannedUID.length() > 0 ? lastScannedUID : "Belum ada") + "</b></p></div>";
+  html += "<div class='card'><p>Format output: <code>RFID_SCAN:UID</code></p>";
+  html += "<p>Gunakan WebSocket client untuk komunikasi real-time</p></div>";
   html += "</body></html>";
   
   server.send(200, "text/html", html);
@@ -878,9 +480,8 @@ void handleRoot() {
 
 void handleStatus() {
   String json = "{";
-  json += "\"totalMahasiswa\":" + String(totalMahasiswa) + ",";
-  json += "\"totalLog\":" + String(totalLog) + ",";
-  json += "\"mode\":\"" + String(modeSaatIni == MODE_NORMAL ? "NORMAL" : "REGISTER") + "\",";
+  json += "\"mode\":\"READER_ONLY\",";
+  json += "\"lastScannedUID\":\"" + lastScannedUID + "\",";
   json += "\"wifi\":\"" + WiFi.localIP().toString() + "\",";
   json += "\"uptime\":" + String(millis()) + "";
   json += "}";

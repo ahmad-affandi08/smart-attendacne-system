@@ -1,8 +1,8 @@
 # 🎯 TapHadir
 
-**Solusi Absensi IoT Menggunakan Identitas Kependudukan (e-KTP)**
+**Solusi Absensi IoT Menggunakan Kartu Tanda Mahasiswa (KTM)**
 
-Sistem absensi pintar berbasis **IoT** dengan teknologi **RFID** dan **ESP8266**. Memanfaatkan **e-KTP** sebagai kartu identitas untuk absensi otomatis yang mudah, cepat, dan akurat.
+Sistem absensi pintar berbasis **IoT** dengan teknologi **RFID** dan **ESP8266**. Memanfaatkan **KTM** sebagai kartu identitas untuk absensi otomatis yang mudah, cepat, dan akurat.
 
 ---
 
@@ -20,9 +20,9 @@ Sistem absensi pintar berbasis **IoT** dengan teknologi **RFID** dan **ESP8266**
 - **Auto-reconnect** dan status monitoring
 - **Baud rate 115200** untuk komunikasi cepat
 
-### 💳 Sistem e-KTP
-- **Scan e-KTP** untuk absensi otomatis
-- **UID Unik** setiap e-KTP tersimpan di database
+### 💳 Sistem KTM
+- **Scan KTM** untuk absensi otomatis
+- **UID Unik** setiap KTM tersimpan di database
 - **Validasi Real-time** dengan feedback visual dan audio
 - **Riwayat Lengkap** semua aktivitas scan
 
@@ -152,12 +152,12 @@ Setelah seed database, gunakan kredensial berikut:
 ### 3. Tambah Mahasiswa
 - Buka menu **"Mahasiswa"**
 - Klik **"Tambah Mahasiswa"**
-- Isi data: Nama, Kelas, NIS, UID e-KTP
+- Isi data: Nama, Kelas, NIS, UID KTM
 - Klik **"Simpan"**
 
-### 4. Scan e-KTP untuk Absensi
+### 4. Scan KTM untuk Absensi
 - Pastikan ESP8266 terhubung
-- Tempelkan e-KTP ke RFID reader
+- Tempelkan KTM ke RFID reader
 - Sistem akan otomatis mencatat kehadiran
 - Lihat hasil di **"Riwayat Absensi"**
 
@@ -275,12 +275,12 @@ ACTIVE_STUDENT:name,class,nis
 - `name` - Student name
 - `class` - Class name
 - `nis` - Student ID (unique)
-- `uid` - e-KTP UID (unique)
+- `uid` - KTM UID (unique)
 - `prodiId` - Program studi reference
 
 ### AttendanceLog
 - `id` - Unique identifier
-- `uid` - e-KTP UID
+- `uid` - KTM UID
 - `studentName` - Student name
 - `class` - Class name
 - `status` - Attendance status
@@ -398,7 +398,7 @@ This project is licensed under the MIT License.
 
 <div align="center">
 
-**TapHadir** - Solusi Absensi IoT dengan e-KTP
+**TapHadir** - Solusi Absensi IoT dengan KTM
 
 Made with ❤️ using Next.js & ESP8266
 

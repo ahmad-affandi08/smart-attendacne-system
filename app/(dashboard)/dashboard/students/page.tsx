@@ -42,7 +42,7 @@ export default function StudentsPage() {
   // Get selected prodi name
   const selectedProdi = prodi.find(p => p.id === formData.prodiId);
 
-  // Listen untuk scan KTP
+  // Listen untuk scan KTM
   useEffect(() => {
     if (!isScanning) return;
 
@@ -51,10 +51,10 @@ export default function StudentsPage() {
     const handleScanResult = async (message: any) => {
       console.log('📨 Students page received:', message);
 
-      // Listen for CARD_SCANNED type with UID (from Arduino scan)
-      if (message.type === 'CARD_SCANNED' && message.data?.uid) {
+      // Listen for RFID_SCAN type (new reader-only mode)
+      if (message.type === 'RFID_SCAN' && message.data?.uid) {
         const uid = message.data.uid;
-        console.log('✅ Found UID from CARD_SCANNED:', uid);
+        console.log('✅ Found UID from RFID_SCAN:', uid);
         setScannedUID(uid);
         setFormData(prev => ({ ...prev, uid }));
         setIsScanning(false);
@@ -62,22 +62,9 @@ export default function StudentsPage() {
         // Check if UID already registered
         const existing = await checkUid(uid);
         if (existing) {
-          toast.error(`KTP ini sudah terdaftar untuk ${existing.name}!`);
+          toast.error(`KTM ini sudah terdaftar untuk ${existing.name}!`);
         } else {
-          toast.success("KTP berhasil di-scan! Silakan lengkapi data.");
-        }
-      }
-      // Fallback for INFO type with UID
-      else if (message.type === 'INFO' && message.data?.uid) {
-        const uid = message.data.uid;
-        console.log('✅ Found UID from INFO:', uid);
-        setScannedUID(uid);
-        setFormData(prev => ({ ...prev, uid }));
-        setIsScanning(false);
-
-        const existing = await checkUid(uid);
-        if (!existing) {
-          toast.success("KTP berhasil di-scan! Silakan lengkapi data.");
+          toast.success("KTM berhasil di-scan! Silakan lengkapi data.");
         }
       }
     };
@@ -100,17 +87,17 @@ export default function StudentsPage() {
       student.nis.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const handleScanKTP = async () => {
+  const handleScanKTM = async () => {
     if (!serialConnection.isConnected) {
       toast.error("Perangkat belum terhubung!");
       return;
     }
 
     setIsScanning(true);
-    toast.info("Tempelkan KTP pada reader...");
+    toast.info("Tempelkan KTM pada reader...");
 
-    // Request scan dari Arduino - works for both Serial and WiFi
-    serialConnection.sendCommand('SCAN');
+    // ESP8266 otomatis kirim RFID_SCAN setiap kali scan
+    // Tidak perlu kirim command SCAN lagi
 
     // Auto stop scanning after 30 seconds
     setTimeout(() => {
@@ -125,7 +112,7 @@ export default function StudentsPage() {
     e.preventDefault();
 
     if (!formData.uid) {
-      toast.error("Silakan scan KTP terlebih dahulu!");
+      toast.error("Silakan scan KTM terlebih dahulu!");
       return;
     }
 
@@ -138,7 +125,7 @@ export default function StudentsPage() {
       // Check UID one more time
       const existing = await checkUid(formData.uid);
       if (existing) {
-        toast.error("KTP ini sudah terdaftar!");
+        toast.error("KTM ini sudah terdaftar!");
         return;
       }
 
@@ -152,11 +139,6 @@ export default function StudentsPage() {
         prodiId: formData.prodiId || null,
         createdAt: new Date(),
       });
-
-      // Send to Arduino (optional, for sync) - works for both Serial and WiFi
-      if (serialConnection.isConnected) {
-        serialConnection.sendCommand(`ADD_Mahasiswa,${formData.name},${formData.class},${formData.nis},${formData.uid}`);
-      }
 
       toast.success(`${formData.name} berhasil ditambahkan!`);
 
@@ -194,7 +176,7 @@ export default function StudentsPage() {
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Manajemen Mahasiswa</h1>
           <p className="text-gray-500 mt-1">
-            Kelola data Mahasiswa dengan KTP
+            Kelola data Mahasiswa dengan KTM
           </p>
         </div>
         <Button
@@ -236,7 +218,7 @@ export default function StudentsPage() {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-gray-600">
-              KTP Terdaftar
+              KTM Terdaftar
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -305,16 +287,16 @@ export default function StudentsPage() {
                       )}
                       {student.uid && (
                         <code className="text-xs text-gray-500 mt-1 block">
-                          KTP: {student.uid}
+                          KTM: {student.uid}
                         </code>
                       )}
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
                     {student.uid ? (
-                      <Badge variant="success">KTP Terdaftar</Badge>
+                      <Badge variant="success">KTM Terdaftar</Badge>
                     ) : (
-                      <Badge variant="danger">Belum Scan KTP</Badge>
+                      <Badge variant="danger">Belum Scan KTM</Badge>
                     )}
                     <Button
                       variant="destructive"
@@ -339,12 +321,12 @@ export default function StudentsPage() {
             <CardHeader>
               <CardTitle>Tambah Mahasiswa Baru</CardTitle>
               <CardDescription>
-                Scan KTP Mahasiswa dan lengkapi data
+                Scan KTM Mahasiswa dan lengkapi data
               </CardDescription>
             </CardHeader>
             <CardContent>
               <form onSubmit={handleSubmit} className="space-y-4">
-                {/* Scan KTP Section */}
+                {/* Scan KTM Section */}
                 <div className="rounded-lg border-2 border-dashed border-gray-300 p-6 text-center">
                   {scannedUID ? (
                     <div className="space-y-3">
@@ -352,7 +334,7 @@ export default function StudentsPage() {
                         <IdCard className="h-8 w-8 text-green-600" />
                       </div>
                       <div>
-                        <p className="font-medium text-green-600">KTP Berhasil Di-scan!</p>
+                        <p className="font-medium text-green-600">KTM Berhasil Di-scan!</p>
                         <code className="text-sm text-gray-600 mt-1 block">
                           {scannedUID}
                         </code>
@@ -363,17 +345,17 @@ export default function StudentsPage() {
                       <Scan className="h-12 w-12 text-gray-400 mx-auto" />
                       <div>
                         <p className="font-medium text-gray-900">
-                          {isScanning ? "Menunggu KTP..." : "Scan KTP Mahasiswa"}
+                          {isScanning ? "Menunggu KTM..." : "Scan KTM Mahasiswa"}
                         </p>
                         <p className="text-sm text-gray-500 mt-1">
                           {isScanning
-                            ? "Tempelkan KTP pada reader RFID"
+                            ? "Tempelkan KTM pada reader RFID"
                             : "Klik tombol di bawah untuk memulai scan"}
                         </p>
                       </div>
                       <Button
                         type="button"
-                        onClick={handleScanKTP}
+                        onClick={handleScanKTM}
                         disabled={!serialConnection.isConnected || isScanning}
                         className="mt-2"
                       >
@@ -385,7 +367,7 @@ export default function StudentsPage() {
                         ) : (
                           <>
                             <Scan className="mr-2 h-4 w-4" />
-                            Scan KTP
+                            Scan KTM
                           </>
                         )}
                       </Button>

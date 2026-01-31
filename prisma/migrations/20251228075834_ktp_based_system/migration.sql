@@ -24,7 +24,7 @@ CREATE TABLE "new_AttendanceLog" (
     "studentName" TEXT NOT NULL,
     "class" TEXT NOT NULL,
     "status" TEXT NOT NULL,
-    "source" TEXT NOT NULL DEFAULT 'ktp',
+    "source" TEXT NOT NULL DEFAULT 'KTM',
     "timestamp" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "AttendanceLog_studentId_fkey" FOREIGN KEY ("studentId") REFERENCES "Student" ("id") ON DELETE SET NULL ON UPDATE CASCADE
 );

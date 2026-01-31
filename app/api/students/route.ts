@@ -53,7 +53,7 @@ export async function POST(request: Request) {
 
     if (existingUid) {
       return NextResponse.json(
-        { error: 'This KTP UID is already registered' },
+        { error: 'This KTM UID is already registered' },
         { status: 409 }
       );
     }
